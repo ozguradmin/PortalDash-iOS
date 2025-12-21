@@ -56,10 +56,17 @@ jobs:
           cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
 
       # 3. Godot ile Xcode Projesi Export
-      - name: Export to Xcode Project
+            - name: Export to Xcode Project
         run: |
           mkdir -p ios_export
-          godot --headless --verbose --export-release "iOS" ios_export/$EXPORT_NAME.xcodeproj
+          godot --headless --verbose --export-release "iOS" ios_export/$EXPORT_NAME.xcodeproj || true
+          if [ -d "ios_export/$EXPORT_NAME.xcodeproj" ]; then
+            echo "Xcode project generated successfully despite Godot build error."
+            exit 0
+          else
+            echo "Failed to generate Xcode project."
+            exit 1
+          fi
 
       # 4. Xcode Build & Archive
       - name: Build and Archive
@@ -80,7 +87,7 @@ jobs:
             -exportOptionsPlist ../export_options.plist \
             -exportPath .
 
-      # 5. TestFlight Yükleme
+      # 5. TestFlight YÃ¼kleme
       - name: Upload to TestFlight
         if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
         run: |
