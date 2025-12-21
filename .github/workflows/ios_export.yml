@@ -1,1 +1,87 @@
-﻿
+﻿name: iOS Export & Upload
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  GODOT_VERSION: 4.3
+  EXPORT_NAME: PortalDash
+
+jobs:
+  export-ios:
+    runs-on: macos-latest
+    
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+      
+      # 1. Godot Kurulumu (Manual - Robust)
+      - name: Setup Godot
+        run: |
+          wget -q https://github.com/godotengine/godot/releases/download/${{ env.GODOT_VERSION }}-stable/Godot_v${{ env.GODOT_VERSION }}-stable_macos.universal.zip
+          unzip -q Godot_v${{ env.GODOT_VERSION }}-stable_macos.universal.zip
+          mv Godot.app /Applications/Godot.app
+          echo "/Applications/Godot.app/Contents/MacOS" >> $GITHUB_PATH
+
+      - name: Setup Export Templates
+        run: |
+          mkdir -p ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          wget -q https://github.com/godotengine/godot/releases/download/${{ env.GODOT_VERSION }}-stable/Godot_v${{ env.GODOT_VERSION }}-stable_export_templates.tpz
+          unzip -q Godot_v${{ env.GODOT_VERSION }}-stable_export_templates.tpz
+          mv templates/* ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable/
+          rm -rf templates Godot_v${{ env.GODOT_VERSION }}-stable_export_templates.tpz
+
+      # 2. Sertifika ve Profil Kurulumu
+      - name: Install Apple Certificate and Profile
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          
+          echo $BUILD_CERTIFICATE_BASE64 | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+          
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          echo $BUILD_PROVISION_PROFILE_BASE64 | base64 --decode > profile.mobileprovision
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      # 3. Godot ile Xcode Projesi Export
+      - name: Export to Xcode Project
+        run: |
+          mkdir -p ios_export
+          godot --headless --verbose --export-release "iOS" ios_export/$EXPORT_NAME.xcodeproj
+
+      # 4. Xcode Build & Archive
+      - name: Build and Archive
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
+        run: |
+          cd ios_export
+          xcodebuild -resolvePackageDependencies
+          xcodebuild -scheme $EXPORT_NAME \
+            -archivePath $EXPORT_NAME.xcarchive \
+            -configuration Release \
+            archive \
+            CODE_SIGN_STYLE=Manual \
+            PROVISIONING_PROFILE_SPECIFIER="match AppStore com.portaldash.game" \
+            DEVELOPMENT_TEAM="${{ secrets.DEVELOPMENT_TEAM_ID }}"
+
+          xcodebuild -exportArchive \
+            -archivePath $EXPORT_NAME.xcarchive \
+            -exportOptionsPlist ../export_options.plist \
+            -exportPath .
+
+      # 5. TestFlight Yükleme
+      - name: Upload to TestFlight
+        if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
+        run: |
+          xcrun altool --upload-app -f ios_export/$EXPORT_NAME.ipa -t ios -u "${{ secrets.APPLE_ID }}" -p "${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}"
