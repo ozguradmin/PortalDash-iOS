@@ -1,4 +1,4 @@
-﻿name: iOS Export & Upload
+name: iOS Export & Upload
 
 on:
   push:
@@ -27,10 +27,10 @@ jobs:
 
       - name: Setup Export Templates
         run: |
-          mkdir -p ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable
+          mkdir -p ~/Library/Application\ Support/Godot/export_templates/${{ env.GODOT_VERSION }}.stable
           wget -q https://github.com/godotengine/godot/releases/download/${{ env.GODOT_VERSION }}-stable/Godot_v${{ env.GODOT_VERSION }}-stable_export_templates.tpz
           unzip -q Godot_v${{ env.GODOT_VERSION }}-stable_export_templates.tpz
-          mv templates/* ~/.local/share/godot/export_templates/${{ env.GODOT_VERSION }}.stable/
+          mv templates/* ~/Library/Application\ Support/Godot/export_templates/${{ env.GODOT_VERSION }}.stable/
           rm -rf templates Godot_v${{ env.GODOT_VERSION }}-stable_export_templates.tpz
 
       # 2. Sertifika ve Profil Kurulumu
@@ -80,7 +80,7 @@ jobs:
             -exportOptionsPlist ../export_options.plist \
             -exportPath .
 
-      # 5. TestFlight Yükleme
+      # 5. TestFlight Y�kleme
       - name: Upload to TestFlight
         if: ${{ env.BUILD_CERTIFICATE_BASE64 != '' }}
         run: |
