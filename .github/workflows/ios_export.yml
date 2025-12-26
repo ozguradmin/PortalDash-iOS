@@ -42,18 +42,15 @@ jobs:
           BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
           KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
         run: |
-          # Create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
           security set-keychain-settings -t 3600 -u build.keychain
           
-          # Import certificate
           echo $BUILD_CERTIFICATE_BASE64 | base64 --decode > certificate.p12
           security import certificate.p12 -k build.keychain -P "$P12_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
           
-          # Install Provisioning Profile
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           echo $BUILD_PROVISION_PROFILE_BASE64 | base64 --decode > profile.mobileprovision
           cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
@@ -73,7 +70,8 @@ jobs:
         run: |
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "ios_export/$EXPORT_NAME.xcodeproj/project.pbxproj"
           sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' "ios_export/$EXPORT_NAME.xcodeproj/project.pbxproj"
-          echo "Patched project.pbxproj."
+          plutil -replace ITSAppUsesNonExemptEncryption -bool NO "ios_export/$EXPORT_NAME/$EXPORT_NAME-Info.plist" || plutil -insert ITSAppUsesNonExemptEncryption -bool NO "ios_export/$EXPORT_NAME/$EXPORT_NAME-Info.plist"
+          echo "Patched project.pbxproj and Info.plist."
 
       - name: Create Export Options Plist
         run: |
@@ -83,13 +81,13 @@ jobs:
           <plist version="1.0">
           <dict>
               <key>method</key>
-              <string>ad-hoc</string>
+              <string>app-store</string>
               <key>teamID</key>
               <string>${{ secrets.DEVELOPMENT_TEAM_ID }}</string>
               <key>provisioningProfiles</key>
               <dict>
                   <key>com.portaldash.game</key>
-                  <string>PortalDash AdHoc</string>
+                  <string>PortalDash Distribution</string>
               </dict>
               <key>signingStyle</key>
               <string>manual</string>
@@ -108,8 +106,9 @@ jobs:
             -scheme "$EXPORT_NAME" \
             -archivePath "$EXPORT_NAME.xcarchive" \
             -configuration Release \
+            -destination "generic/platform=iOS" \
             CODE_SIGN_STYLE="Manual" \
-            PROVISIONING_PROFILE_SPECIFIER="PortalDash AdHoc" \
+            PROVISIONING_PROFILE_SPECIFIER="PortalDash Distribution" \
             DEVELOPMENT_TEAM="${{ secrets.DEVELOPMENT_TEAM_ID }}" \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             -allowProvisioningUpdates
@@ -120,8 +119,15 @@ jobs:
             -exportPath dist/ \
             -allowProvisioningUpdates
 
+      - name: Upload to TestFlight
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          xcrun altool --upload-app -f dist/$EXPORT_NAME.ipa -t ios -u "$APPLE_ID" -p "$APPLE_APP_SPECIFIC_PASSWORD"
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: iOS-Build-AdHoc
+          name: iOS-Build
           path: dist/*.ipa
