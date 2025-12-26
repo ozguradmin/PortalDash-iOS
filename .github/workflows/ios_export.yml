@@ -68,7 +68,8 @@ jobs:
               echo "ERROR: Xcode project export failed."
               exit 1
           fi
-          echo "Xcode project generated successfully."      # 6. Patch Xcode Project (Force Manual Signing & Compliance)
+          echo "Xcode project generated successfully."
+
       - name: Patch Xcode Project
         run: |
           # Force Disable Automatic Signing
@@ -78,7 +79,11 @@ jobs:
           # Inject Export Compliance (Skip UI Question)
           plutil -replace ITSAppUsesNonExemptEncryption -bool NO "ios_export/$EXPORT_NAME/$EXPORT_NAME-Info.plist" || plutil -insert ITSAppUsesNonExemptEncryption -bool NO "ios_export/$EXPORT_NAME/$EXPORT_NAME-Info.plist"
           
-          echo "Patched project.pbxproj and Info.plist." > export_options.plist
+          echo "Patched project.pbxproj and Info.plist."
+
+      - name: Create Export Options Plist
+        run: |
+          cat <<EOF > export_options.plist
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -86,12 +91,18 @@ jobs:
               <key>method</key>
               <string>app-store</string>
               <key>teamID</key>
-              <string>$TEAM_ID</string>
+              <string>${{ secrets.DEVELOPMENT_TEAM_ID }}</string>
               <key>provisioningProfiles</key>
               <dict>
                   <key>com.portaldash.game</key>
                   <string>PortalDash Distribution</string>
               </dict>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>stripSwiftSymbols</key>
+              <true/>
+              <key>compileBitcode</key>
+              <false/>
           </dict>
           </plist>
           EOF
@@ -129,5 +140,3 @@ jobs:
         with:
           name: iOS-Build
           path: dist/*.ipa
-
-
