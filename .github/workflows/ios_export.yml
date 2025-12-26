@@ -68,15 +68,17 @@ jobs:
               echo "ERROR: Xcode project export failed."
               exit 1
           fi
-          echo "Xcode project generated successfully."
-
-      - name: Patch Xcode Project for Manual Signing
+          echo "Xcode project generated successfully."      # 6. Patch Xcode Project (Force Manual Signing & Compliance)
+      - name: Patch Xcode Project
         run: |
           # Force Disable Automatic Signing
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "ios_export/$EXPORT_NAME.xcodeproj/project.pbxproj"
-          # Ensure ProvisioningStyle is also Manual if present
           sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' "ios_export/$EXPORT_NAME.xcodeproj/project.pbxproj"
-          echo "Patched project.pbxproj to enforce Manual Signing."
+          
+          # Inject Export Compliance (Skip UI Question)
+          plutil -replace ITSAppUsesNonExemptEncryption -bool NO "ios_export/$EXPORT_NAME/$EXPORT_NAME-Info.plist" || plutil -insert ITSAppUsesNonExemptEncryption -bool NO "ios_export/$EXPORT_NAME/$EXPORT_NAME-Info.plist"
+          
+          echo "Patched project.pbxproj and Info.plist."
 
       - name: Create Export Options Plist
         env:
