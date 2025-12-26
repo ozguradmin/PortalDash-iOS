@@ -61,7 +61,6 @@ jobs:
       - name: Export to Xcode Project
         run: |
           mkdir -p ios_export
-          # Godot export may fail due to implicit build attempt, allow it but check for project existence
           godot --headless --export-release "iOS" ios_export/$EXPORT_NAME.xcodeproj || true
           
           if [ ! -d "ios_export/$EXPORT_NAME.xcodeproj" ]; then
@@ -72,14 +71,9 @@ jobs:
 
       - name: Patch Xcode Project
         run: |
-          # Force Disable Automatic Signing
           sed -i '' 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' "ios_export/$EXPORT_NAME.xcodeproj/project.pbxproj"
           sed -i '' 's/ProvisioningStyle = Automatic;/ProvisioningStyle = Manual;/g' "ios_export/$EXPORT_NAME.xcodeproj/project.pbxproj"
-          
-          # Inject Export Compliance (Skip UI Question)
-          plutil -replace ITSAppUsesNonExemptEncryption -bool NO "ios_export/$EXPORT_NAME/$EXPORT_NAME-Info.plist" || plutil -insert ITSAppUsesNonExemptEncryption -bool NO "ios_export/$EXPORT_NAME/$EXPORT_NAME-Info.plist"
-          
-          echo "Patched project.pbxproj and Info.plist."
+          echo "Patched project.pbxproj."
 
       - name: Create Export Options Plist
         run: |
@@ -89,13 +83,13 @@ jobs:
           <plist version="1.0">
           <dict>
               <key>method</key>
-              <string>app-store</string>
+              <string>ad-hoc</string>
               <key>teamID</key>
               <string>${{ secrets.DEVELOPMENT_TEAM_ID }}</string>
               <key>provisioningProfiles</key>
               <dict>
                   <key>com.portaldash.game</key>
-                  <string>PortalDash Distribution</string>
+                  <string>PortalDash AdHoc</string>
               </dict>
               <key>signingStyle</key>
               <string>manual</string>
@@ -109,34 +103,25 @@ jobs:
 
       - name: Archive and Export IPA
         run: |
-          # Archive
           xcodebuild archive \
             -project "ios_export/$EXPORT_NAME.xcodeproj" \
             -scheme "$EXPORT_NAME" \
             -archivePath "$EXPORT_NAME.xcarchive" \
             -configuration Release \
             CODE_SIGN_STYLE="Manual" \
-            PROVISIONING_PROFILE_SPECIFIER="PortalDash Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="PortalDash AdHoc" \
             DEVELOPMENT_TEAM="${{ secrets.DEVELOPMENT_TEAM_ID }}" \
             CODE_SIGN_IDENTITY="iPhone Distribution" \
             -allowProvisioningUpdates
 
-          # Export IPA
           xcodebuild -exportArchive \
             -archivePath "$EXPORT_NAME.xcarchive" \
             -exportOptionsPlist export_options.plist \
             -exportPath dist/ \
             -allowProvisioningUpdates
 
-      - name: Upload to TestFlight
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-        run: |
-          xcrun altool --upload-app -f dist/$EXPORT_NAME.ipa -t ios -u "$APPLE_ID" -p "$APPLE_APP_SPECIFIC_PASSWORD"
-          
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: iOS-Build
+          name: iOS-Build-AdHoc
           path: dist/*.ipa
