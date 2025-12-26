@@ -86,7 +86,7 @@ jobs:
               <string>${{ secrets.DEVELOPMENT_TEAM_ID }}</string>
               <key>provisioningProfiles</key>
               <dict>
-                  <key>com.ozgurguler.portaldashgame</key>
+                  <key>com.roguelikegame.portaldash</key>
                   <string>PortalDash AppStore New</string>
               </dict>
               <key>signingStyle</key>
